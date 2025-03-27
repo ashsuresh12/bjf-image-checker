@@ -23,7 +23,7 @@ async function main() {
   const rows = response.data.values || [];
   const prefixToUrl = {};
 
-  const updates = rows.map(async (row, index) => {
+  const updates = rows.map(async (row) => {
     const fullSku = row[0];
     if (!fullSku || fullSku.length < 5) return [ '', '' ];
 
@@ -33,19 +33,30 @@ async function main() {
       return [ prefixToUrl[prefix].url, prefixToUrl[prefix].status ];
     }
 
-    const imageUrl = `${CDN_BASE_URL}${prefix}-image.jpg`; // Adjust if needed
-    try {
-      const res = await axios.head(imageUrl);
-      if (res.status === 200) {
-        prefixToUrl[prefix] = { url: imageUrl, status: '✅' };
-      } else {
-        prefixToUrl[prefix] = { url: imageUrl, status: '❌' };
-      }
-    } catch {
-      prefixToUrl[prefix] = { url: imageUrl, status: '❌' };
+    // Try to locate any image that starts with the prefix
+    const testFilenames = [
+      `${prefix}-Olive_Oil.jpg`, // fallback if known
+      `${prefix}.jpg`,
+      `${prefix}-1.jpg`,
+      `${prefix}-product.jpg`,
+    ];
+
+    let validUrl = '', status = '❌';
+
+    for (let filename of testFilenames) {
+      const url = `${CDN_BASE_URL}${filename}`;
+      try {
+        const res = await axios.head(url);
+        if (res.status === 200) {
+          validUrl = url;
+          status = '✅';
+          break;
+        }
+      } catch {}
     }
 
-    return [ prefixToUrl[prefix].url, prefixToUrl[prefix].status ];
+    prefixToUrl[prefix] = { url: validUrl, status };
+    return [ validUrl, status ];
   });
 
   const results = await Promise.all(updates);
