@@ -23,36 +23,47 @@ async function main() {
   const rows = response.data.values || [];
   const prefixToUrl = {};
 
-  const updates = rows.map(async (row) => {
+  const updates = rows.map(async (row, i) => {
     const fullSku = row[0];
-    if (!fullSku || fullSku.length < 5) return [ '', '' ];
+    const rowNum = START_ROW + i;
+    if (!fullSku || fullSku.length < 5) {
+      console.log(`[Row ${rowNum}] ❌ No valid SKU`);
+      return [ '', '' ];
+    }
 
     const prefix = fullSku.slice(0, 5);
 
     if (prefixToUrl[prefix]) {
+      console.log(`[Row ${rowNum}] Reusing cached URL for prefix ${prefix} → ${prefixToUrl[prefix].status}`);
       return [ prefixToUrl[prefix].url, prefixToUrl[prefix].status ];
     }
 
-    // Try to locate any image that starts with the prefix
     const testFilenames = [
-      `${prefix}-Olive_Oil.jpg`, // fallback if known
+      `${prefix}-Olive_Oil.jpg`,
       `${prefix}.jpg`,
       `${prefix}-1.jpg`,
       `${prefix}-product.jpg`,
     ];
 
     let validUrl = '', status = '❌';
+    const attempted = [];
 
     for (let filename of testFilenames) {
       const url = `${CDN_BASE_URL}${filename}`;
+      attempted.push(filename);
       try {
         const res = await axios.head(url);
         if (res.status === 200) {
           validUrl = url;
           status = '✅';
+          console.log(`[Row ${rowNum}] ✅ Found image: ${filename}`);
           break;
         }
       } catch {}
+    }
+
+    if (status === '❌') {
+      console.log(`[Row ${rowNum}] ❌ Tried: ${attempted.join(', ')} — No valid image found`);
     }
 
     prefixToUrl[prefix] = { url: validUrl, status };
@@ -61,7 +72,6 @@ async function main() {
 
   const results = await Promise.all(updates);
 
-  // Write results to columns AR (image URL) and AH (status emoji)
   const updateRangeAR = `${SHEET_NAME}!AR${START_ROW}:AR${START_ROW + results.length - 1}`;
   const updateRangeAH = `${SHEET_NAME}!AH${START_ROW}:AH${START_ROW + results.length - 1}`;
 
