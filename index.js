@@ -9,11 +9,20 @@ const START_ROW = 4;
 const MAX_ROWS = 100;
 const CDN_BASE_URL = 'https://cdn.shopify.com/s/files/1/0474/3446/5442/files/';
 
+function formatHandle(handle) {
+  return handle
+    .trim()
+    .replace(/[^a-zA-Z0-9 ]/g, '') // remove punctuation/symbols
+    .split(' ')
+    .filter(Boolean)
+    .join('_');
+}
+
 async function main() {
   const auth = await authenticate();
   const sheets = google.sheets({ version: 'v4', auth });
 
-  const range = `${SHEET_NAME}!AP${START_ROW}:AP${START_ROW + MAX_ROWS - 1}`;
+  const range = `${SHEET_NAME}!A${START_ROW}:AP${START_ROW + MAX_ROWS - 1}`;
   const response = await sheets.spreadsheets.values.get({
     spreadsheetId: SPREADSHEET_ID,
     range,
@@ -23,50 +32,38 @@ async function main() {
   const prefixToUrl = {};
 
   const updates = rows.map(async (row, i) => {
-    const fullSku = row[0];
     const rowNum = START_ROW + i;
-    if (!fullSku || fullSku.length < 5) {
-      console.log(`[Row ${rowNum}] ❌ No valid SKU`);
+    const handle = row[0];
+    const fullSku = row[40]; // column AP (index 40)
+
+    if (!fullSku || fullSku.length < 5 || !handle) {
+      console.log(`[Row ${rowNum}] ❌ Missing SKU or handle`);
       return [ '', '' ];
     }
 
     const prefix = fullSku.slice(0, 5);
+    const formattedHandle = formatHandle(handle);
+    const filename = `${prefix}-${formattedHandle}.jpg`;
+    const imageUrl = `${CDN_BASE_URL}${filename}`;
 
     if (prefixToUrl[prefix]) {
       console.log(`[Row ${rowNum}] Reusing cached URL for prefix ${prefix} → ${prefixToUrl[prefix].status}`);
       return [ prefixToUrl[prefix].url, prefixToUrl[prefix].status ];
     }
 
-    const testFilenames = [
-      `${prefix}-Olive_Oil.jpg`,
-      `${prefix}.jpg`,
-      `${prefix}-1.jpg`,
-      `${prefix}-product.jpg`,
-    ];
-
-    let validUrl = '', status = '❌';
-    const attempted = [];
-
-    for (let filename of testFilenames) {
-      const url = `${CDN_BASE_URL}${filename}`;
-      attempted.push(filename);
-      try {
-        const res = await axios.head(url);
-        if (res.status === 200) {
-          validUrl = url;
-          status = '✅';
-          console.log(`[Row ${rowNum}] ✅ Found image: ${filename}`);
-          break;
-        }
-      } catch {}
+    try {
+      const res = await axios.head(imageUrl);
+      if (res.status === 200) {
+        prefixToUrl[prefix] = { url: imageUrl, status: '✅' };
+        console.log(`[Row ${rowNum}] ✅ Found: ${filename}`);
+        return [ imageUrl, '✅' ];
+      }
+    } catch {
+      console.log(`[Row ${rowNum}] ❌ Not found: ${filename}`);
     }
 
-    if (status === '❌') {
-      console.log(`[Row ${rowNum}] ❌ Tried: ${attempted.join(', ')} — No valid image found`);
-    }
-
-    prefixToUrl[prefix] = { url: validUrl, status };
-    return [ validUrl, status ];
+    prefixToUrl[prefix] = { url: '', status: '❌' };
+    return [ '', '❌' ];
   });
 
   const results = await Promise.all(updates);
