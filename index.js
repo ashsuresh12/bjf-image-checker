@@ -13,7 +13,6 @@ async function main() {
   const auth = await authenticate();
   const sheets = google.sheets({ version: 'v4', auth });
 
-  // Read SKUs from AP column
   const range = `${SHEET_NAME}!AP${START_ROW}:AP${START_ROW + MAX_ROWS - 1}`;
   const response = await sheets.spreadsheets.values.get({
     spreadsheetId: SPREADSHEET_ID,
@@ -38,36 +37,31 @@ async function main() {
       return [ prefixToUrl[prefix].url, prefixToUrl[prefix].status ];
     }
 
-    const testFilenames = [
-      `${prefix}-Olive_Oil.jpg`,
-      `${prefix}.jpg`,
-      `${prefix}-1.jpg`,
-      `${prefix}-product.jpg`,
-    ];
+    let foundUrl = '';
+    let status = '❌';
 
-    let validUrl = '', status = '❌';
-    const attempted = [];
+    try {
+      const res = await axios.get(`${CDN_BASE_URL}.json`);
+      const files = res.data.files || [];
 
-    for (let filename of testFilenames) {
-      const url = `${CDN_BASE_URL}${filename}`;
-      attempted.push(filename);
-      try {
-        const res = await axios.head(url);
-        if (res.status === 200) {
-          validUrl = url;
+      const match = files.find(f => f.filename.startsWith(prefix));
+      if (match) {
+        foundUrl = `${CDN_BASE_URL}${match.filename}`;
+        // Verify it actually loads
+        const headCheck = await axios.head(foundUrl);
+        if (headCheck.status === 200) {
           status = '✅';
-          console.log(`[Row ${rowNum}] ✅ Found image: ${filename}`);
-          break;
+          console.log(`[Row ${rowNum}] ✅ Matched file: ${match.filename}`);
         }
-      } catch {}
+      } else {
+        console.log(`[Row ${rowNum}] ❌ No file match for prefix ${prefix}`);
+      }
+    } catch (err) {
+      console.log(`[Row ${rowNum}] ❌ Error checking files for prefix ${prefix}`);
     }
 
-    if (status === '❌') {
-      console.log(`[Row ${rowNum}] ❌ Tried: ${attempted.join(', ')} — No valid image found`);
-    }
-
-    prefixToUrl[prefix] = { url: validUrl, status };
-    return [ validUrl, status ];
+    prefixToUrl[prefix] = { url: foundUrl, status };
+    return [ foundUrl, status ];
   });
 
   const results = await Promise.all(updates);
