@@ -37,31 +37,36 @@ async function main() {
       return [ prefixToUrl[prefix].url, prefixToUrl[prefix].status ];
     }
 
-    let foundUrl = '';
-    let status = '❌';
+    const testFilenames = [
+      `${prefix}-Olive_Oil.jpg`,
+      `${prefix}.jpg`,
+      `${prefix}-1.jpg`,
+      `${prefix}-product.jpg`,
+    ];
 
-    try {
-      const res = await axios.get(`${CDN_BASE_URL}.json`);
-      const files = res.data.files || [];
+    let validUrl = '', status = '❌';
+    const attempted = [];
 
-      const match = files.find(f => f.filename.startsWith(prefix));
-      if (match) {
-        foundUrl = `${CDN_BASE_URL}${match.filename}`;
-        // Verify it actually loads
-        const headCheck = await axios.head(foundUrl);
-        if (headCheck.status === 200) {
+    for (let filename of testFilenames) {
+      const url = `${CDN_BASE_URL}${filename}`;
+      attempted.push(filename);
+      try {
+        const res = await axios.head(url);
+        if (res.status === 200) {
+          validUrl = url;
           status = '✅';
-          console.log(`[Row ${rowNum}] ✅ Matched file: ${match.filename}`);
+          console.log(`[Row ${rowNum}] ✅ Found image: ${filename}`);
+          break;
         }
-      } else {
-        console.log(`[Row ${rowNum}] ❌ No file match for prefix ${prefix}`);
-      }
-    } catch (err) {
-      console.log(`[Row ${rowNum}] ❌ Error checking files for prefix ${prefix}`);
+      } catch {}
     }
 
-    prefixToUrl[prefix] = { url: foundUrl, status };
-    return [ foundUrl, status ];
+    if (status === '❌') {
+      console.log(`[Row ${rowNum}] ❌ Tried: ${attempted.join(', ')} — No valid image found`);
+    }
+
+    prefixToUrl[prefix] = { url: validUrl, status };
+    return [ validUrl, status ];
   });
 
   const results = await Promise.all(updates);
