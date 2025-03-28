@@ -12,7 +12,7 @@ const CDN_BASE_URL = 'https://cdn.shopify.com/s/files/1/0474/3446/5442/files/';
 function formatHandle(handle) {
   return handle
     .trim()
-    .replace(/[^a-zA-Z0-9 ]/g, '') // remove punctuation/symbols
+    .replace(/[^a-zA-Z0-9 ]/g, '')
     .split(' ')
     .filter(Boolean)
     .join('_');
@@ -33,8 +33,11 @@ async function main() {
 
   const updates = rows.map(async (row, i) => {
     const rowNum = START_ROW + i;
-    const handle = row[0];
-    const fullSku = row[40]; // column AP (index 40)
+    const paddedRow = [...row];
+    while (paddedRow.length <= 40) paddedRow.push('');
+
+    const handle = paddedRow[0];
+    const fullSku = paddedRow[40];
 
     if (!fullSku || fullSku.length < 5 || !handle) {
       console.log(`[Row ${rowNum}] ❌ Missing SKU or handle`);
